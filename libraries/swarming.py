@@ -218,16 +218,5 @@ class GPTSwarm:
         self.ctx.term()
         logger.debug('swarm was released')
 
-async def run_model():
-    async with GPTSwarm('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', 180000, 3000, 4096) as model:
-        swarm_response = await model.swarm(
-            conversations=[ [Message(role=Role.USER, content='Please explain me the big bang in simple terms')] for _ in range(32)]
-        ) 
-        if swarm_response:
-            for rsp in swarm_response:
-                print(rsp)
-            
-if __name__ == '__main__':
-    asyncio.run(run_model())
 
 

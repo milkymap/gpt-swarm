@@ -1,16 +1,16 @@
 # GPT-3 Swarm
 
-Ce projet fournit une implémentation en Python pour exécuter plusieurs modèles GPT-3 de OpenAI en parallèle, ce qui est particulièrement utile pour les applications à haut débit. L'implémentation utilise asyncio et ZeroMQ pour communiquer entre les travailleurs et le collecteur, et gère les restrictions de taux imposées par OpenAI. Le code fournit une séparation claire des préoccupations, la logique de l'essaim et le client GPT-3 étant dans des classes différentes. Le projet comprend également un client d'exemple qui montre comment utiliser l'implémentation pour générer des réponses à plusieurs messages simultanément.
+This project provides a Python implementation for running multiple OpenAI's GPT-3 models in parallel, which is particularly useful for high-throughput applications. The implementation uses asyncio and ZeroMQ to communicate between the workers and the collector, and handles the rate-limiting restrictions imposed by OpenAI. The code provides a clean separation of concerns, with the swarm logic and the GPT-3 client being in different classes. The project also includes a sample client that demonstrates how to use the implementation to generate responses to multiple messages concurrently.
 
-## Caractéristiques
+## Features
 
-- Prend en charge l'exécution simultanée de plusieurs modèles GPT-3.
-- Utilise asyncio et ZeroMQ pour une communication efficace entre les travailleurs et le collecteur.
-- Gère les restrictions de taux imposées par OpenAI.
-- Fournit une séparation claire des préoccupations entre la logique de l'essaim et le client GPT-3.
-- Comprend un client d'exemple qui montre comment utiliser l'implémentation.
+- Supports running multiple GPT-3 models concurrently.
+- Uses asyncio and ZeroMQ for efficient communication between the workers and the collector.
+- Handles the rate-limiting restrictions imposed by OpenAI.
+- Provides a clean separation of concerns between the swarm logic and the GPT-3 client.
+- Includes a sample client that demonstrates how to use the implementation.
 
-## Technologies utilisées
+## Technologies used
 
 - Python 3.8
 - OpenAI API
@@ -19,23 +19,22 @@ Ce projet fournit une implémentation en Python pour exécuter plusieurs modèle
 
 ## Installation
 
-- Clonez le dépôt.
-- Installez les dépendances à l'aide de pip.
-- Configurez la clé API OpenAI dans le fichier de configuration.
-- Exécutez le client d'exemple pour générer des réponses à plusieurs messages simultanément.
+- Clone the repository.
+- Install the dependencies using pip.
+- Set the OpenAI API key in the configuration file.
+- Run the sample client to generate responses to multiple messages concurrently.
 
-## 
 ```bash
-    python -m venv env 
-    source env/bin/activate 
-    pip install -r requirements.txt
-    export OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXX; python main.py start-swarming
+python -m venv env 
+source env/bin/activate 
+pip install -r requirements.txt
+export OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXXX; python main.py start-swarming
 ```
 
-## Contribuer
+## Contributing
 
-Les contributions sont les bienvenues ! Veuillez ouvrir un problème ou une demande de tirage si vous avez des suggestions ou des améliorations.
+Contributions are welcome! Please open an issue or pull request if you have any suggestions or improvements.
 
-## Licence
+## License
 
-Ce projet est sous licence MIT.
+This project is licensed under the MIT License.

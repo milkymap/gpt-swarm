@@ -1,0 +1,13 @@
+anyio
+async-timeout
+certifi
+h11
+httpcore
+httpx
+idna
+pkg_resources
+pydantic
+pyzmq
+rfc3986
+sniffio
+typing_extensions

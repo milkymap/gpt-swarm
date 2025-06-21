@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx 
 import signal 
 import asyncio
+from openai import AsyncOpenAI
 
 from time import time 
 from libraries.log import logger 
@@ -24,10 +25,7 @@ class GPTSwarm:
         self.period = 1 / float(self.nb_requests_per_mn / 60)  # 0.02s for 3000 reqs
 
         self.collector_address = 'inproc://collector_endpoint'
-        self.headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.openai_api_key}'
-        }
+        self.openai_client = AsyncOpenAI(api_key=self.openai_api_key)
         
     def stop_swarm(self):
         logger.info('stop-swarming was called ...!')
@@ -79,30 +77,35 @@ class GPTSwarm:
         pull_socket.close(linger=0)
         logger.debug('collector has released its ressources')
 
-    async def worker_strategy(self, push_socket:aiozmq.Socket, post_response:httpx.Response) -> Tuple[Optional[Message], bool]:
+    async def worker_strategy(self, push_socket:aiozmq.Socket, response, error=None) -> Tuple[Optional[Message], bool]:
         outgoing_message, keep_loop = None, False    
         try:
-            status_code = post_response.status_code
-            if status_code == 200:  # successfull response 
-                content = post_response.json()
-                consumed_tokens = content['usage']['total_tokens']
+            if error is None and response:  # successful response 
+                # Extract tokens from the response usage
+                consumed_tokens = response.usage.total_tokens if hasattr(response, 'usage') and response.usage else self.model_token_size
                 async with self.mutex:
                     self.total_tokens = self.total_tokens + consumed_tokens
                     self.consumed_tokens = self.consumed_tokens + consumed_tokens
-                outgoing_message = Message(**content['choices'][0]['message'])
+                
+                # Create message from response output
+                outgoing_message = Message(role=Role.ASSISTANT, content=response.output_text)
                 push_socket.send(b'...')  # tell the collector that we have a new response 
                 keep_loop = False             
-            elif status_code == 401:  # authorization failed 
-                keep_loop = False  
-            elif status_code == 429 or status_code == 500:  # internal server or rate limit 
-                keep_loop = True 
+            elif error:
+                # Handle different error types
+                if "401" in str(error) or "unauthorized" in str(error).lower():  # authorization failed 
+                    keep_loop = False
+                elif "429" in str(error) or "500" in str(error) or "rate limit" in str(error).lower():  # rate limit or server error
+                    keep_loop = True 
+                else:
+                    keep_loop = False 
             else:
-                keep_loop= False 
+                keep_loop = False 
         except Exception as e:
             logger.error(e)
         return outgoing_message, keep_loop
 
-    async def worker(self, worker_id:str, nb_retries:int, client:httpx.AsyncClient, messages:List[Message]) -> Optional[Message]:
+    async def worker(self, worker_id:str, nb_retries:int, messages:List[Message]) -> Optional[Message]:
         push_socket:aiozmq.Socket = self.ctx.socket(zmq.PUSH)
         push_socket.connect(self.collector_address)
 
@@ -125,24 +128,32 @@ class GPTSwarm:
                 
                 if tpm_signal:
                     logger.debug(f'{worker_id} has received the TPM signal')
-                    post_response = await client.post(
-                        url='https://api.openai.com/v1/chat/completions',
-                        json={
-                            'model': 'gpt-3.5-turbo',
-                            'messages': list(map(
-                                lambda msg: msg.dict(),
-                                messages
-                            )) 
-                        },
-                        timeout=10
-                    )   
-                    outgoing_message, keep_loop = await self.worker_strategy(push_socket, post_response)
-                    counter = counter + int(keep_loop)  # 1 or 0 depends on the status of keep loop
+                    try:
+                        # Convert messages to the format expected by Responses API
+                        input_messages = []
+                        for msg in messages:
+                            input_messages.append({
+                                "role": msg.role.value,
+                                "content": msg.content
+                            })
+                        
+                        # Use OpenAI Responses API with GPT-4o model
+                        response = await self.openai_client.responses.create(
+                            model="gpt-4o",
+                            input=input_messages,
+                            timeout=10
+                        )
+                        outgoing_message, keep_loop = await self.worker_strategy(push_socket, response)
+                        counter = counter + int(keep_loop)  # 1 or 0 depends on the status of keep loop
+                    except Exception as api_error:
+                        logger.warning(f'{worker_id} API error: {api_error}')
+                        outgoing_message, keep_loop = await self.worker_strategy(push_socket, None, api_error)
+                        counter = counter + int(keep_loop)
                     
                 else:
                     await self.tokens_status.wait()
 
-            except httpx.TimeoutException:
+            except asyncio.TimeoutError:
                 logger.warning(f'{worker_id} has timeouted')
                 counter = counter + 1  
             except asyncio.CancelledError:
@@ -169,22 +180,20 @@ class GPTSwarm:
 
         worker_responses = None 
         try:
-            async with httpx.AsyncClient(headers=self.headers) as client:
-                awaitables = []
-                for messages in conversations:
-                    worker_id = str(uuid4())
-                    task = asyncio.create_task(
-                        coro=self.worker(
-                            worker_id=worker_id, 
-                            nb_retries=3,
-                            client=client,
-                            messages=messages
-                        ),
-                        name=f'worker-{worker_id}'
-                    )
-                    awaitables.append(task)
-                
-                worker_responses = await asyncio.gather(*awaitables, return_exceptions=False)
+            awaitables = []
+            for messages in conversations:
+                worker_id = str(uuid4())
+                task = asyncio.create_task(
+                    coro=self.worker(
+                        worker_id=worker_id, 
+                        nb_retries=3,
+                        messages=messages
+                    ),
+                    name=f'worker-{worker_id}'
+                )
+                awaitables.append(task)
+            
+            worker_responses = await asyncio.gather(*awaitables, return_exceptions=False)
         except asyncio.CancelledError:
             logger.debug('swarm was cancelled...!')
         except Exception as e:
